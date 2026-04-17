@@ -1,0 +1,194 @@
+---
+title: "Draft Data Visualization"
+author: "Lê Khánh Nhân"
+date: "20-2-2026"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# 1. Load Libraries
+library(tidyverse)
+library(reshape2)
+dataset_3D_printer <- read_csv("data.csv")
+temp_data <- dataset_3D_printer %>%
+  mutate(
+    infill_pattern = as.numeric(infill_pattern != "grid"),
+    material = as.numeric(material != "abs")
+  )
+```
+
+## Overview information
+
+Overview of 3D-Printing parameters and outputs within the data set:
+
+```{r summary, echo=TRUE}
+glimpse(dataset_3D_printer)
+summary(dataset_3D_printer)
+```
+## Histogram
+
+Histogram of each parameters:
+```{r}
+temp_data <- dataset_3D_printer %>%
+  mutate(infill_pattern = as.numeric(infill_pattern != "grid"),
+         material = as.numeric(material != "abs"))
+
+gathered_data <- gather(temp_data)
+gathered_data <- gathered_data %>%
+  mutate(key = factor(key, levels = unique(gathered_data$key)))
+
+ggplot(data = gathered_data, aes(x = value)) +
+  geom_histogram() +
+  facet_wrap(~ key, scales = "free", nrow = 4) +
+  labs(x = NULL, y = NULL)
+```
+
+
+
+## Pearson correlation matrix
+
+By creating a Pearson correlation matrix, we can observe the relationships between 
+different parameters and between inputs and outputs.
+By that, we can choose what set of parameters we should look deeper into.
+
+```{r Pearson Correlation Matrix}
+
+# Correlation Matrix Logic
+cormat <- round(cor(temp_data), 2)
+
+# Helper function to get upper triangle (removes the mirror image)
+get_upper_tri <- function(cormat) {
+  cormat[lower.tri(cormat)] <- NA
+  return(cormat)
+}
+
+# Helper function to reorder by similarity (clustering)
+reorder_cormat <- function(cormat) {
+  dd <- as.dist((1 - cormat) / 2)
+  hc <- hclust(dd)
+  cormat[hc$order, hc$order]
+}
+
+# Apply reordering and extract upper triangle
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+
+# Visualize with ggplot2
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+ggplot(melted_cormat, aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "black") +
+  scale_fill_gradient2(
+    low = "blue", high = "red", mid = "azure", 
+    midpoint = 0, limit = c(-1, 1), 
+    name = "Pearson\nCorrelation"
+  ) +
+  geom_text(aes(label = value), color = "black", size = 3.5) +
+  coord_fixed() +
+  theme_minimal() +
+  labs(title = "3D Printer Parameters Correlation Matrix", x = NULL, y = NULL) +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank(),
+    legend.justification = c(1, 0),
+    legend.position = c(0.6, 0.7),
+    legend.direction = "horizontal"
+  ) +
+  guides(fill = guide_colorbar(
+    barwidth = 7, barheight = 1,
+    title.position = "top", title.hjust = 0.5
+  ))
+
+
+
+```
+We can observe that 
+1. Highly correlated parameters like Layer height to the roughness level, nozzle temperature to tension strenth, infill density to tension strength, material to elongation, we will analyze those deeper later on.
+2. Temperature related parameters highly correlated to each other as espected like bed_temperature, nozzle temperature, fanspeed.
+3. Infill pattern hardly affect the final product
+4. Printing material is more important than infill pattern
+...
+
+## Layer height to Roughness
+
+Layer height and roughness have a positive correlation with both materials:
+
+```{r Layer Height to Roughness, echo=TRUE}
+ggplot(dataset_3D_printer, aes(x = layer_height, 
+                               y = roughness,
+                               color = material)) +
+geom_point(shape = 18) + 
+geom_smooth(method = "lm", se = FALSE) + 
+scale_color_brewer(palette = "Set1") + 
+labs(x = "Layer height", 
+       y = "Roughness",
+       color = "Material",
+       title = "Correlation between Layer Height and Roughness",
+       caption = "2011-2025 The Bootstrap Authors")
+
+```
+
+We can conclude that greater layer height will make the surface more rough.
+
+## Tension Strength to Nozzle temperature
+
+Tension strength with different nozzle temperature
+```{r Tension Strength and Nozzle temperature}
+ggplot(dataset_3D_printer, aes(x = nozzle_temperature, 
+                               y = tension_strenght,
+                               color = material)) +
+  geom_point(shape = 18) + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  scale_color_brewer(palette = "Set1") + 
+  labs(x = "Nozzle temperature", 
+       y = "Tension strength",
+       color = "Material",
+       title = "Correlation between Nozzle temperature and Tension strength",
+       caption = "2011-2025 The Bootstrap Authors")
+
+
+```
+Pla tend to perform better when printed at a higher nozzle temperature 
+Abs is a complete oposite and will perform much worse when printed at a higher nozzle temperature.
+
+## Infill density to Tension strength
+```{r}
+ggplot(dataset_3D_printer, aes(x = infill_density, 
+                               y = tension_strenght,
+                               color = material)) +
+  geom_point(shape = 18) + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Infill density", 
+       y = "Tension strength",
+       color = "Material",
+       title = "Correlation between Infill density and Tension strength",
+       caption = "2011-2025 The Bootstrap Authors")
+```
+Printed part with more infill density can perform better when applied tensile force, especially pla.
+
+
+## Material to Elongation
+```{r}
+
+ggplot(dataset_3D_printer, aes(x = material,
+                               y = elongation,
+                               color = infill_pattern)) +
+  geom_boxplot(shape = 19) + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  scale_color_brewer(palette = "Set2") +
+  labs(x = "Material", 
+       y = "Elongation",
+       color = "Infill pattern",
+       title = "Correlation between material and elongation",
+       caption = "2011-2025 The Bootstrap Authors")
+
+
+```
+
+Pla can withstand more elongation compare to abs.
