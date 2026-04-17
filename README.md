@@ -1,5 +1,4 @@
-A github page storing all the code for the assignment of subject: Probability and Statistic of HCMUT.
-It's currently HK252.
+A github page storing all the code for the assignment of subject: Probability and Statistic of HCMUT, HK252.
 
 Names of the contributor:
 LÊ KHÁNH NHÂN,
